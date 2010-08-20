@@ -1,6 +1,6 @@
 // CommonJS compatible module loading.
 // (Except from require.paths, it's compliant with spec 1.1.1.)
-this.require = (function(exports){
+this.require = (function(){
   // require/load/import a module
   // require(id[, parentId]) -> [object module-api]
   // @throws Error /module not found (json-rep-of-id)/
