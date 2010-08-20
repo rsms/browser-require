@@ -103,6 +103,7 @@ this.require = (function(){
    * Load and define a module
    * load ( spec Object, Function(callback(err Error)) )
    * load ( specs Array, Function(callback(err Error)) )
+   * load ( url String, Function(callback(err Error)) )
    */
   function load (spec, callback) {
     if ((spec instanceof Array) ||
