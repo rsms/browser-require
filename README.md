@@ -104,7 +104,9 @@ It's also possible to *set* the `exports` object:
 
 ### require.main -> [object module]
 
-The top level module object (read-only). This normally refers to `window`.
+The top level module object (read-only). This modules' `exports` member normally refers to `window`.
+
+    require.main === window === true
 
 
 ### require.load(Object spec|Array specs|String url[, Function callback(Error err)])
