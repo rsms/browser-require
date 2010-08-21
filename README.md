@@ -1,8 +1,8 @@
 # browser-require
 
-CommonJS module `require` for web browsers.
+[CommonJS module](http://wiki.commonjs.org/wiki/Modules) system for web browsers.
 
-## Examples and usage
+## Usage & examples
 
 Firt off, you need to load `require.js` -- i.e. `<script src="require.js"></script>` -- then...
 
@@ -64,6 +64,78 @@ index.html
     alert(foo.hello);
     // ...
     </script>
+
+## API
+
+### require(String id[, String parentId]) -> [object module-exports]
+
+Import module with identifier `id`.
+
+- `id` can be a relative path like "./foo" or "../../foo", but only makes sense when `require` is called from within another module or `parentId` is provided.
+
+### require.define(String id, [String uri,] Function block(require, module, exports){...})
+
+Define a module, adding it to the list of available modules. The `block` function will be called (once) at the first `require` of the module (i.e. the actual execution is delayed/lazy).
+
+If the `uri` argument is given, the resulting module will have a read-only `uri` property referring to that value. This is optional per the CommonJS spec.
+
+You module (the code inside `block`) should export its API through the `exports` object like so:
+
+    require.define('foo', function(require, module, exports){
+      exports.hello = "hello from foo";
+    });
+    ...
+    var foo = require('foo');
+    puts(foo.hello); // -> "hello from foo"
+
+It's also possible to *set* the `exports` object:
+
+    require.define('foo', function(require, module, exports){
+      exports = module.exports = function() {
+        return "hello from foo function"
+      }
+      exports.hello = "hello from foo";
+    });
+    ...
+    var foo = require('foo');
+    puts(foo()); // -> "hello from foo function"
+    puts(foo.hello); // -> "hello from foo"
+
+
+### require.main -> [object module]
+
+The top level module object (read-only). This normally refers to `window`.
+
+
+### require.load(Object spec|Array specs|String url[, Function callback(Error err)])
+
+Load and define a remotely located module.
+
+A `spec` object should have at least one of two properties:
+
+    { url: String  // URL or path to the module resource
+    , id:  String  // Module identifier
+    }
+
+- If no `url` is given, `url` is created from `id` by appending ".js"
+- If no `id` is given, `id` is deduced from `url` by stripping anything else than path and also stripping any filename extension.
+
+You can also pass an array of `spec` objects or strings. Passing a string is equivalent to passing a `spec` object like this: `{url: url}`
+
+**Note:** If no `callback` is passed, **loading will be synchronous**.
+
+
+### [object module]
+
+A module object have the following members:
+
+- `exports` -- an object representing the API
+- `id` -- Identifier (read-only)
+
+Optional/not-always-there members:
+
+- `uri` -- URI which might be a URL denoting the module source
+
 
 ## MIT license
 

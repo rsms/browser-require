@@ -1,6 +1,66 @@
 // CommonJS compatible module loading.
 // (Except from require.paths, it's compliant with spec 1.1.1.)
-this.require = (function(){
+(function(parentExports){
+  // normalize an array of path components
+  function normalizeArray (v, keepBlanks) {
+    var L = v.length, dst = new Array(L), dsti = 0,
+        i = 0, part, negatives = 0,
+        isRelative = (L && v[0] !== '');
+    for (; i<L; ++i) {
+      part = v[i];
+      if (part === '..') {
+        if (dsti > 1) {
+          --dsti;
+        } else if (isRelative) {
+          ++negatives;
+        } else {
+          dst[0] = '';
+        }
+      } else if (part !== '.' && (dsti === 0 || keepBlanks || part !== '')) {
+        dst[dsti++] = part;
+      }
+    }
+    if (negatives) {
+      dst[--negatives] = dst[dsti-1];
+      dsti = negatives + 1;
+      while (negatives--) { dst[negatives] = '..'; }
+    }
+    dst.length = dsti;
+    return dst;
+  }
+  // normalize an id
+  function normalizeId(id, parentId) {
+    id = id.replace(/\/+$/g, '');
+    return normalizeArray((parentId ? parentId + '/../' + id : id).split('/'))
+           .join('/');
+  }
+  // normalize a url
+  function normalizeUrl(url, baseLocation) {
+    if (!(/^\w+:/).test(url)) {
+      var u = baseLocation.protocol+'//'+baseLocation.hostname;
+      if (baseLocation.port && baseLocation.port !== 80) {
+        u += ':'+baseLocation.port;
+      }
+      var path = baseLocation.pathname;
+      if (url.charAt(0) === '/') {
+        url = u + normalizeArray(url.split('/')).join('/');
+      } else {
+        path += ((path.charAt(path.length-1) === '/') ? '' : '/../') + url;
+        url = u + normalizeArray(path.split('/')).join('/');
+      }
+    }
+    return url;
+  }
+  // define a constant (read-only) value property
+  var defineConstant;
+  if (Object.defineProperty) {
+    defineConstant = function (obj, name, value) {
+      Object.defineProperty(obj, name, {value: value, writable: false,
+        enumerable: true, configurable: false});
+    }
+  } else {
+    defineConstant = function (obj, name, value) { obj[name] = value; }
+  }
   // require/load/import a module
   // require(id[, parentId]) -> [object module-api]
   // @throws Error /module not found (json-rep-of-id)/
@@ -18,6 +78,7 @@ this.require = (function(){
         //console.log('_require', _id, 'from', id);
         return require(_id, id);
       };
+      defineConstant(_require, 'main', require.main);
       var block = mod.block; delete mod.block;
       mod.exports = {};
       if (require.initFilter) {
@@ -28,69 +89,36 @@ this.require = (function(){
     return mod.exports;
   }
   // define a module
-  // define(String id, block(require, module, exports){...})
-  function define (id, block) {
-    var mod = {id: String(id), block: block};
-    require.modules[mod.id] = mod;
-  }
-  function normalizeTerms (parts) {
-    /* This function:
-    Copyright 2009, 2010 Ryan Lienhart Dahl. All rights reserved.
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to
-    deal in the Software without restriction, including without limitation the
-    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-    sell copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in
-    all copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-    IN THE SOFTWARE. */
-    var directories = [], prev;
-    for (var i = 0, l = parts.length - 1; i <= l; ++i) {
-      var directory = parts[i];
-      // if it's blank, but not the first thing, and not the last thing, skip it
-      if (directory === "" && i !== 0 && i !== l) continue;
-      // if it's a dot, and there was some previous dir already, then skip it
-      if (directory === "." && prev !== undefined) continue;
-      // if it starts with "", and is a . or .., then skip it.
-      if (directories.length === 1 && directories[0] === ""
-          && (directory === "." || directory === "..")) {
-        continue;
-      }
-      if (directory === ".." && directories.length && prev !== ".."
-          && prev !== "." && prev !== undefined && prev !== "") {
-        directories.pop();
-        prev = directories.slice(-1)[0];
-      } else {
-        if (prev === ".") directories.pop();
-        directories.push(directory);
-        prev = directory;
-      }
+  // define(String id, [String uri,] block(require, module, exports){...})
+  function define (id, uri, block) {
+    if (typeof uri === 'function') {
+      block = uri; uri = null;
     }
-    return directories;
+    var mod = {block: block};
+    defineConstant(mod, 'id', String(id));
+    if (uri) {
+      defineConstant(mod, 'uri', String(uri));
+    }
+    require.modules[mod.id] = mod;
+    return mod;
   }
-  function normalizeId(id, parentId) {
-    id = id.replace(/\/+$/g, '');
-    return normalizeTerms((parentId ? parentId + '/../' + id : id).split('/'))
-           .join('/');
-  }
+  // modules keyed by id
   require.modules = {};
-  //require.paths = []; // when/if we have remote loading
+  // search paths -- disabled until we use/need this
+  //require.paths = [];
+  // main module, accessible from require.main
+  var mainModule = define('');
+  delete mainModule.block;
+  mainModule.exports = parentExports;
+  defineConstant(require, 'main', mainModule);
+  // the define function
   require.define = define;
-  return require;
-})(); // require
+  // export the require function
+  parentExports.require = require;
 
-// Optional require.load
-(function(){
-  if (typeof XMLHttpRequest == "undefined") {
+  // -------------------------------------------------------
+  // Optional require.load
+  if (typeof XMLHttpRequest === "undefined") {
     // we make use of XHR
     XMLHttpRequest = function () {
       try { return new ActiveXObject("Msxml2.XMLHTTP.6.0"); } catch (e) {}
@@ -145,13 +173,15 @@ this.require = (function(){
     } else if (!spec.url && !spec.id) {
       throw new TypeError('missing both "url" and "id"');
     }
+    // normalize url
+    spec.url = normalizeUrl(spec.url, window.location);
     var xhr = new XMLHttpRequest();
     var async = !!callback;
     function evalResponse() {
       try {
-        eval('require.define("'+spec.id+'", function (require, module, exports) {'+
-             xhr.responseText+
-             '});');
+        eval('require.define("'+spec.id+'",'+
+             ' "'+spec.url.replace(/"/g, '\\"')+'"'+
+             ', function (require, module, exports) {'+xhr.responseText+'});');
       } catch (err) {
         err.message += ' in '+spec.url;
         throw err;
@@ -183,4 +213,5 @@ this.require = (function(){
     }
   }
   require.load = load;
-})();
+
+})(this);
